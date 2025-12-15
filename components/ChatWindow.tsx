@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Contact, Message } from '../types';
-import { Send, Phone, Video, MoreVertical, Smile, Paperclip, ChevronLeft, Sparkles, Mic, Image as ImageIcon, Camera, FileText, X, Reply, Trash2, Star, Copy, AlertTriangle } from 'lucide-react';
+import { Send, Phone, Video, MoreVertical, Smile, Paperclip, ChevronLeft, Sparkles, Mic, Image as ImageIcon, Camera, FileText, X, Reply, Trash2, Star, Copy, AlertTriangle, ArrowDown, Check, CheckCheck, Edit2 } from 'lucide-react';
 import { generateAIResponse } from '../services/geminiService';
 import { ProfileSidebar } from './ProfileSidebar';
 
@@ -33,6 +33,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [showProfile, setShowProfile] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   
   // Delete Modal State
   const [deleteConfirmation, setDeleteConfirmation] = useState<{
@@ -42,33 +44,68 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   } | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // --- SCROLL LOGIC ---
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    // Only auto-scroll if user is already near bottom or it's a new message from 'me'
+    if (messages.length > 0) {
+       const container = messagesContainerRef.current;
+       if (container) {
+          const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 300;
+          const lastMessage = messages[messages.length - 1];
+          if (isNearBottom || lastMessage.senderId === 'me') {
+             scrollToBottom();
+          }
+       }
+    }
   }, [messages, isTyping, replyingTo]);
+
+  const handleScroll = () => {
+    if (messagesContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+      const isBottom = scrollHeight - scrollTop - clientHeight < 150;
+      setShowScrollButton(!isBottom);
+    }
+  };
+
+  // --- UTILS ---
+  const formatMessageDate = (date: Date) => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (date.toDateString() === today.toDateString()) return 'Hoje';
+    if (date.toDateString() === yesterday.toDateString()) return 'Ontem';
+    
+    return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' });
+  };
+
+  const isSameDay = (d1: Date, d2: Date) => {
+    return d1.toDateString() === d2.toDateString();
+  };
+
+  const handleCopyText = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   // --- DELETE LOGIC ---
   const requestDeleteMessage = (messageId: string) => {
-    setDeleteConfirmation({
-      isOpen: true,
-      type: 'message',
-      itemId: messageId
-    });
+    setDeleteConfirmation({ isOpen: true, type: 'message', itemId: messageId });
   };
 
   const requestDeleteChat = () => {
-    setDeleteConfirmation({
-      isOpen: true,
-      type: 'chat'
-    });
+    setDeleteConfirmation({ isOpen: true, type: 'chat' });
   };
 
   const confirmDelete = () => {
@@ -76,7 +113,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       onDeleteMessage(deleteConfirmation.itemId);
     } else if (deleteConfirmation?.type === 'chat') {
       onDeleteChat();
-      setShowProfile(false); // Close sidebar after delete
+      setShowProfile(false); 
     }
     setDeleteConfirmation(null);
   };
@@ -85,7 +122,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     setDeleteConfirmation(null);
   };
 
-  // --- AUDIO LOGIC ---
+  // --- AUDIO & FILE LOGIC ---
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -94,9 +131,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
       mediaRecorder.onstop = () => {
@@ -109,7 +144,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       mediaRecorder.start();
       setIsRecording(true);
     } catch (error) {
-      console.error("Error accessing microphone:", error);
       alert("Não foi possível acessar o microfone.");
     }
   };
@@ -127,7 +161,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     triggerResponse(""); 
   };
 
-  // --- IMAGE LOGIC ---
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -174,9 +207,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSendText();
-    }
+    if (e.key === 'Enter') handleSendText();
   };
 
   const addEmoji = (emoji: string) => {
@@ -232,113 +263,127 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-3 relative z-10 scrollbar-thin">
+        <div 
+          className="flex-1 overflow-y-auto px-4 py-4 space-y-1 relative z-10 scrollbar-thin"
+          ref={messagesContainerRef}
+          onScroll={handleScroll}
+        >
           {messages.map((msg, index) => {
             const isMe = msg.senderId === 'me';
-            const isLast = index === messages.length - 1;
+            const prevMsg = messages[index - 1];
+            const nextMsg = messages[index + 1];
             
+            // Logic for visual grouping
+            const isFirstInGroup = !prevMsg || prevMsg.senderId !== msg.senderId;
+            const isLastInGroup = !nextMsg || nextMsg.senderId !== msg.senderId;
+            
+            // Logic for Date Separators
+            const showDateSeparator = !prevMsg || !isSameDay(new Date(prevMsg.timestamp), new Date(msg.timestamp));
+
             return (
-              <div 
-                key={msg.id} 
-                className={`flex w-full group/msg relative ${isMe ? 'justify-end' : 'justify-start'}`}
-                onMouseEnter={() => setHoveredMessageId(msg.id)}
-                onMouseLeave={() => setHoveredMessageId(null)}
-              >
-                {/* Context Menu Button (visible on hover) */}
-                <div className={`absolute top-1/2 -translate-y-1/2 ${isMe ? 'left-0 -translate-x-full pr-3' : 'right-0 translate-x-full pl-3'} h-full flex items-center opacity-0 group-hover/msg:opacity-100 transition-opacity duration-300 z-10`}>
-                  <div className="flex gap-1 bg-black/60 backdrop-blur-md rounded-full p-1 border border-white/10">
-                    <button onClick={() => setReplyingTo(msg)} className="p-2 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-colors" title="Responder">
-                       <Reply size={14} />
-                    </button>
-                    {isMe && (
-                       <button 
-                        onClick={() => requestDeleteMessage(msg.id)}
-                        className="p-2 rounded-full hover:bg-red-500/20 text-gray-300 hover:text-red-400 transition-colors" 
-                        title="Apagar"
-                       >
-                          <Trash2 size={14} />
-                       </button>
-                    )}
+              <React.Fragment key={msg.id}>
+                {showDateSeparator && (
+                  <div className="flex justify-center my-6 sticky top-2 z-10 opacity-90">
+                    <span className="glass-light px-4 py-1.5 rounded-full text-[11px] font-bold text-gray-400 uppercase tracking-wider shadow-lg">
+                      {formatMessageDate(new Date(msg.timestamp))}
+                    </span>
                   </div>
-                </div>
+                )}
 
                 <div 
-                  className={`
-                    max-w-[85%] md:max-w-[65%] shadow-lg text-sm relative transition-all duration-200
-                    ${isMe 
-                      ? 'bg-gradient-to-br from-primary-600 to-primary-800 text-white rounded-2xl rounded-tr-sm shadow-primary-900/20' 
-                      : 'glass-bubble text-gray-100 rounded-2xl rounded-tl-sm'
-                    }
-                  `}
+                  className={`flex w-full group/msg relative ${isMe ? 'justify-end' : 'justify-start'} ${isLastInGroup ? 'mb-3' : 'mb-0.5'}`}
+                  onMouseEnter={() => setHoveredMessageId(msg.id)}
+                  onMouseLeave={() => setHoveredMessageId(null)}
                 >
-                  {/* Replied Message Context */}
-                  {msg.replyTo && (
-                    <div className={`
-                      mx-2 mt-2 mb-1 rounded-lg p-2 border-l-2 text-xs cursor-pointer flex flex-col bg-black/20
-                      ${isMe ? 'border-primary-300' : 'border-primary-500'}
-                    `}>
-                       <span className={`font-bold mb-0.5 ${isMe ? 'text-primary-100' : 'text-primary-400'}`}>
-                         {msg.replyTo.senderName}
-                       </span>
-                       <span className="truncate opacity-80">{msg.replyTo.type === 'image' ? '📷 Imagem' : (msg.replyTo.type === 'audio' ? '🎵 Áudio' : msg.replyTo.text)}</span>
+                  {/* Context Menu (Floating Actions) */}
+                  <div className={`absolute top-1/2 -translate-y-1/2 ${isMe ? 'left-0 -translate-x-full pr-2' : 'right-0 translate-x-full pl-2'} h-full flex items-center opacity-0 group-hover/msg:opacity-100 transition-opacity duration-200 z-10`}>
+                    <div className="flex gap-1 bg-black/60 backdrop-blur-md rounded-full p-1 border border-white/10">
+                      <button onClick={() => setReplyingTo(msg)} className="p-1.5 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-colors" title="Responder"><Reply size={14} /></button>
+                      {msg.type === 'text' && (
+                         <button onClick={() => handleCopyText(msg.text, msg.id)} className="p-1.5 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-colors" title="Copiar">
+                            {copiedId === msg.id ? <Check size={14} className="text-green-400"/> : <Copy size={14} />}
+                         </button>
+                      )}
+                      {isMe && (
+                        <button onClick={() => requestDeleteMessage(msg.id)} className="p-1.5 rounded-full hover:bg-red-500/20 text-gray-300 hover:text-red-400 transition-colors" title="Apagar"><Trash2 size={14} /></button>
+                      )}
                     </div>
-                  )}
+                  </div>
 
-                  {/* Media Content */}
-                  {msg.type === 'image' && msg.mediaUrl && (
-                    <div className="p-1.5 pb-0">
-                      <img 
-                        src={msg.mediaUrl} 
-                        alt="Sent image" 
-                        className="rounded-xl max-h-80 w-full object-cover cursor-pointer hover:brightness-110 transition-all border border-white/5"
-                        onClick={() => window.open(msg.mediaUrl, '_blank')}
-                      />
-                    </div>
-                  )}
+                  <div 
+                    className={`
+                      max-w-[85%] md:max-w-[65%] shadow-lg text-sm relative transition-all duration-200
+                      ${isMe 
+                        ? 'bg-gradient-to-br from-primary-600 to-primary-800 text-white shadow-primary-900/20' 
+                        : 'glass-bubble text-gray-100'
+                      }
+                      ${isFirstInGroup && isMe ? 'rounded-tr-2xl rounded-tl-2xl rounded-bl-2xl rounded-br-md' : ''}
+                      ${!isFirstInGroup && !isLastInGroup && isMe ? 'rounded-2xl rounded-br-md rounded-tr-md' : ''}
+                      ${isLastInGroup && !isFirstInGroup && isMe ? 'rounded-tr-md rounded-tl-2xl rounded-bl-2xl rounded-br-2xl' : ''}
+                      ${isFirstInGroup && isLastInGroup && isMe ? 'rounded-2xl rounded-tr-md' : ''}
 
-                  {msg.type === 'audio' && msg.mediaUrl && (
-                    <div className="flex items-center gap-3 min-w-[260px] p-4">
-                       <button className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-95 ${isMe ? 'bg-white/20' : 'bg-primary-500/20 text-primary-400'}`}>
-                         <Mic size={20} className={isMe ? "text-white" : ""} />
-                       </button>
-                       <div className="flex-1 flex flex-col gap-1">
-                          <div className={`h-1 rounded-full w-full ${isMe ? 'bg-white/30' : 'bg-gray-600'}`}>
-                             <div className={`h-full w-1/3 rounded-full ${isMe ? 'bg-white' : 'bg-primary-500'}`}></div>
-                          </div>
-                          <span className="text-[10px] opacity-70">0:00 / 0:12</span>
-                       </div>
-                       <audio src={msg.mediaUrl} className="hidden" />
-                    </div>
-                  )}
-
-                  {/* Text Content */}
-                  {msg.text && (
-                     <p className={`whitespace-pre-wrap leading-relaxed px-4 pt-3 ${msg.type === 'image' ? 'pb-2' : 'pb-3'} ${msg.replyTo ? 'pt-1' : ''} text-[15px]`}>
-                       {msg.text}
-                     </p>
-                  )}
-                  
-                  {/* Metadata */}
-                  <div className={`text-[10px] flex items-center justify-end gap-1 px-3 pb-2 opacity-60 font-medium`}>
-                    {msg.isStarred && <Star size={10} className="fill-current text-yellow-400" />}
-                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    {isMe && (
-                       <span className={msg.status === 'read' ? 'text-blue-200' : 'text-white/50'}>
-                         {msg.status === 'read' ? (
-                           <svg width="14" height="10" viewBox="0 0 16 11" fill="none" className="w-3.5 h-3.5"><path d="M11.1 0.775L10.325 0L6.05 4.275L4.475 2.7L3.7 3.475L6.05 5.825L11.1 0.775ZM15.3 0.775L14.525 0L10.25 4.275L9.65 3.675L8.875 4.45L10.25 5.825L15.3 0.775ZM0.5 5.975L1.275 5.2L4.05 7.975L3.275 8.75L0.5 5.975Z" fill="currentColor"/></svg>
-                         ) : (
-                           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="w-3 h-3"><path d="M10 2L4.5 7.5L2 5" stroke="currentColor" strokeWidth="1.5"/></svg>
-                         )}
-                       </span>
+                      ${isFirstInGroup && !isMe ? 'rounded-tl-2xl rounded-tr-2xl rounded-br-2xl rounded-bl-md' : ''}
+                      ${!isFirstInGroup && !isLastInGroup && !isMe ? 'rounded-2xl rounded-bl-md rounded-tl-md' : ''}
+                      ${isLastInGroup && !isFirstInGroup && !isMe ? 'rounded-tl-md rounded-tr-2xl rounded-br-2xl rounded-bl-2xl' : ''}
+                      ${isFirstInGroup && isLastInGroup && !isMe ? 'rounded-2xl rounded-tl-md' : ''}
+                    `}
+                  >
+                    {/* Replies */}
+                    {msg.replyTo && (
+                      <div className={`mx-2 mt-2 mb-1 rounded-lg p-2 border-l-2 text-xs cursor-pointer flex flex-col bg-black/20 ${isMe ? 'border-primary-300' : 'border-primary-500'}`}>
+                         <span className={`font-bold mb-0.5 ${isMe ? 'text-primary-100' : 'text-primary-400'}`}>{msg.replyTo.senderName}</span>
+                         <span className="truncate opacity-80">{msg.replyTo.type === 'image' ? '📷 Imagem' : (msg.replyTo.type === 'audio' ? '🎵 Áudio' : msg.replyTo.text)}</span>
+                      </div>
                     )}
+
+                    {/* Image */}
+                    {msg.type === 'image' && msg.mediaUrl && (
+                      <div className="p-1.5 pb-0">
+                        <img src={msg.mediaUrl} alt="Sent" className="rounded-xl max-h-80 w-full object-cover cursor-pointer hover:brightness-110 transition-all border border-white/5" onClick={() => window.open(msg.mediaUrl, '_blank')} />
+                      </div>
+                    )}
+
+                    {/* Audio */}
+                    {msg.type === 'audio' && msg.mediaUrl && (
+                      <div className="flex items-center gap-3 min-w-[260px] p-4">
+                         <button className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-95 ${isMe ? 'bg-white/20' : 'bg-primary-500/20 text-primary-400'}`}>
+                           <Mic size={20} className={isMe ? "text-white" : ""} />
+                         </button>
+                         <div className="flex-1 flex flex-col gap-1">
+                            <div className={`h-1 rounded-full w-full ${isMe ? 'bg-white/30' : 'bg-gray-600'}`}>
+                               <div className={`h-full w-1/3 rounded-full ${isMe ? 'bg-white' : 'bg-primary-500'}`}></div>
+                            </div>
+                            <span className="text-[10px] opacity-70">0:00 / 0:12</span>
+                         </div>
+                      </div>
+                    )}
+
+                    {/* Text */}
+                    {msg.text && (
+                       <p className={`whitespace-pre-wrap leading-relaxed px-4 pt-2 ${msg.type === 'image' ? 'pb-2' : 'pb-1'} ${msg.replyTo ? 'pt-1' : ''} text-[15px]`}>
+                         {msg.text}
+                       </p>
+                    )}
+                    
+                    {/* Footer / Status */}
+                    <div className={`text-[10px] flex items-center justify-end gap-1 px-3 pb-1.5 opacity-60 font-medium`}>
+                      {msg.isStarred && <Star size={10} className="fill-current text-yellow-400" />}
+                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {isMe && (
+                         <span className={msg.status === 'read' ? 'text-blue-200' : 'text-white/50'}>
+                           {msg.status === 'read' ? <CheckCheck size={14} /> : <Check size={14} />}
+                         </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              </React.Fragment>
             );
           })}
+          
           {isTyping && (
-             <div className="flex justify-start animate-fade-in">
-               <div className="glass-bubble px-4 py-3 rounded-2xl rounded-tl-none flex gap-1.5 items-center">
+             <div className="flex justify-start animate-fade-in mb-4">
+               <div className="glass-bubble px-4 py-3 rounded-2xl rounded-tl-md flex gap-1.5 items-center">
                  <span className="w-2 h-2 bg-primary-500 rounded-full animate-bounce delay-0"></span>
                  <span className="w-2 h-2 bg-primary-500 rounded-full animate-bounce delay-150"></span>
                  <span className="w-2 h-2 bg-primary-500 rounded-full animate-bounce delay-300"></span>
@@ -347,6 +392,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           )}
           <div ref={messagesEndRef} />
         </div>
+        
+        {/* Scroll To Bottom Button */}
+        {showScrollButton && (
+          <button 
+            onClick={() => scrollToBottom()}
+            className="absolute bottom-24 right-6 z-20 bg-dark-800/80 backdrop-blur-md text-primary-400 p-2.5 rounded-full shadow-xl border border-white/10 hover:bg-dark-700 hover:scale-110 transition-all animate-bounce-small"
+          >
+            <ArrowDown size={20} />
+          </button>
+        )}
 
         {/* Floating Input Area */}
         <div className="px-4 pb-4 pt-2 z-20">
@@ -476,38 +531,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       {deleteConfirmation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-4">
           <div className="bg-[#18181b] border border-white/10 p-6 rounded-3xl shadow-2xl max-w-sm w-full animate-scale-in relative overflow-hidden">
-            {/* Glow Effect */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-1 bg-red-500 blur-[20px] opacity-50"></div>
-
             <div className="flex flex-col items-center text-center">
               <div className="w-14 h-14 bg-red-500/10 rounded-full flex items-center justify-center mb-4 text-red-500">
                 <AlertTriangle size={28} />
               </div>
-              
               <h3 className="text-xl font-bold text-white mb-2">
                 {deleteConfirmation.type === 'message' ? 'Apagar mensagem?' : 'Apagar conversa?'}
               </h3>
-              
               <p className="text-gray-400 text-sm mb-6">
                 {deleteConfirmation.type === 'message' 
                   ? 'Essa ação não pode ser desfeita. A mensagem será removida para você.'
                   : 'Tem certeza que deseja apagar todo o histórico dessa conversa? Essa ação é irreversível.'
                 }
               </p>
-              
               <div className="flex gap-3 w-full">
-                <button 
-                  onClick={cancelDelete}
-                  className="flex-1 py-3 px-4 rounded-xl bg-dark-800 text-white hover:bg-dark-700 transition-colors font-medium border border-white/5"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  onClick={confirmDelete}
-                  className="flex-1 py-3 px-4 rounded-xl bg-red-600 text-white hover:bg-red-500 transition-colors font-medium shadow-lg shadow-red-900/30"
-                >
-                  Apagar
-                </button>
+                <button onClick={cancelDelete} className="flex-1 py-3 px-4 rounded-xl bg-dark-800 text-white hover:bg-dark-700 transition-colors font-medium border border-white/5">Cancelar</button>
+                <button onClick={confirmDelete} className="flex-1 py-3 px-4 rounded-xl bg-red-600 text-white hover:bg-red-500 transition-colors font-medium shadow-lg shadow-red-900/30">Apagar</button>
               </div>
             </div>
           </div>

@@ -29,7 +29,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({ contact, type: initial
 
   // Duration timer
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
     if (callStatus === 'Conectado') {
       interval = setInterval(() => {
         setDuration(prev => prev + 1);
@@ -137,7 +137,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({ contact, type: initial
               </div>
               <h2 className="text-3xl font-bold text-white mb-2">{contact.name}</h2>
               <p className="text-gray-200 font-medium tracking-wide text-lg bg-dark-900/50 px-4 py-1 rounded-full backdrop-blur-md">
-                {status === 'Conectado' ? formatTime(duration) : callStatus}
+                {callStatus === 'Conectado' ? formatTime(duration) : callStatus}
               </p>
             </div>
          </div>

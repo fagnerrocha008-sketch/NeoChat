@@ -66,11 +66,20 @@ const MOCK_CONTACTS: Contact[] = [
   }
 ];
 
+// Helper for dynamic dates
+const getYesterday = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d;
+};
+
 const INITIAL_MESSAGES: Record<string, Message[]> = {
   'ai-bot': [
+    { id: '0', senderId: 'ai-bot', text: 'Iniciando sistema...', type: 'text', timestamp: getYesterday(), status: 'read' },
     { id: '1', senderId: 'ai-bot', text: 'Olá! Sou o Neo. Bem-vindo ao futuro.', type: 'text', timestamp: new Date(), status: 'read' }
   ],
   'user-1': [
+    { id: '0', senderId: 'user-1', text: 'Oi Alice, preciso daquelas fotos.', type: 'text', timestamp: getYesterday(), status: 'read' },
     { id: '1', senderId: 'user-1', text: 'Oi, tudo bem?', type: 'text', timestamp: new Date(Date.now() - 100000), status: 'read' },
     { id: '2', senderId: 'me', text: 'Tudo ótimo e com você?', type: 'text', timestamp: new Date(Date.now() - 90000), status: 'read' },
     { id: '3', senderId: 'user-1', text: 'Combinado então!', type: 'text', timestamp: new Date(Date.now() - 80000), status: 'read' }
