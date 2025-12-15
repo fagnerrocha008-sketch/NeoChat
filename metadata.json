@@ -1,0 +1,8 @@
+{
+  "name": "RChat",
+  "description": "Um aplicativo de mensagens moderno, rápido e dinâmico com integração de IA.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
